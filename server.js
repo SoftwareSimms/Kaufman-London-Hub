@@ -18,7 +18,7 @@ const { ClientSecretCredential } = require('@azure/identity');
 const { Server } = require('socket.io');
 
 const app = express();
-const port = process.env.PORT || 3000;
+const port = 3000;
 const server = http.createServer(app);
 const io = new Server(server);
 
@@ -409,8 +409,7 @@ app.delete('/api/withdraw-ticket/:id', auth.ensureAuthenticated, (req, res) => {
 });
 
 
-
-// Start the server
-server.listen(port, () => {
+// Start the server and listen on all interfaces
+server.listen(port, '0.0.0.0', () => {
     console.log(`Server running on port ${port}`);
 });
