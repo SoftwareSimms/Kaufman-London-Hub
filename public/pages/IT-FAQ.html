@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FAQ - Kaufman Hub</title>
+    <link rel="icon" type="image/png" sizes="32x32" href="public/img/favicon.ico">
+    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/css/bootstrap.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <link rel="stylesheet" href="public/styles/user-ticket.css">
+    <script src="https://cdn.jsdelivr.net/npm/vue@2.6.14/dist/vue.js"></script>
+</head>
+
+<body>
+    <!-- Navbar -->
+    <div class="navbar">
+        <!-- Home Button -->
+        <a href="/" class="btn btn-home">
+            <i class="fas fa-home"></i> Home
+        </a>
+
+        <!-- Submit a Ticket Button -->
+        <a href="/ticket" class="btn btn-submit">
+            <i class="fas fa-ticket-alt"></i> Submit a Ticket
+        </a>
+    </div>
+
+    <!-- FAQ Section -->
+    <div class="main-container" id="app">
+        <h2>Frequently Asked Questions</h2>
+        <p>Find answers to common questions about Kaufman Hub services and support.</p>
+
+        <!-- FAQ Accordion -->
+        <div id="faqAccordion" class="accordion">
+            <div class="card" v-for="(faq, index) in faqs" :key="index">
+                <div class="card-header" :id="'heading' + index">
+                    <h5 class="mb-0">
+                        <button class="btn btn-link" @click="toggleFAQ(index)" 
+                                :aria-expanded="faq.isOpen" :aria-controls="'collapse' + index">
+                            <i :class="faq.isOpen ? 'fas fa-chevron-down' : 'fas fa-chevron-right'"></i> {{ faq.question }}
+                        </button>
+                    </h5>
+                </div>
+
+                <div :id="'collapse' + index" class="collapse" :class="{ show: faq.isOpen }" 
+                     :aria-labelledby="'heading' + index" data-parent="#faqAccordion">
+                    <div class="card-body">
+                        {{ faq.answer }}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <footer>
+        <div class="logo-container">
+            <img src="public/img/H.W.-Kaufman.jpg" alt="H.W. Kaufman Logo" class="logo">
+            <!-- Additional logos can be added here -->
+        </div>
+    </footer>
+
+    <!-- Scripts -->
+    <script src="https://code.jquery.com/jquery-3.3.1.slim.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/popper.js/1.14.7/umd/popper.min.js"></script>
+    <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/js/bootstrap.min.js"></script>
+    <script src="/public/js/FAQ.js"></script>
+
+    <script>
+        new Vue({
+            el: '#app',
+            data: {
+                faqs: [
+                    { question: "How can I submit a ticket?", answer: "To submit a ticket, click on the 'Submit a Ticket' button on the top menu.", isOpen: false },
+                    { question: "How long does it take to get a response?", answer: "Our support team aims to respond within 24 hours.", isOpen: false },
+                    { question: "What is Kaufman Hub?", answer: "Kaufman Hub is a platform for managing support tickets and services.", isOpen: false },
+                    { question: "Can I withdraw my ticket after submission?", answer: "Yes, you can withdraw a ticket as long as it hasn't been resolved.", isOpen: false }
+                ]
+            },
+            methods: {
+                toggleFAQ(index) {
+                    this.faqs[index].isOpen = !this.faqs[index].isOpen;
+                }
+            }
+        });
+    </script>
+
+</body>
+
+</html>

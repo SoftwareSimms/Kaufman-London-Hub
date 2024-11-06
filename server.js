@@ -7,6 +7,7 @@ const MemoryStore = require('memorystore')(session);
 const bodyParser = require('body-parser');
 const rateLimit = require('express-rate-limit');
 const path = require('path');
+const http = require('http');
 const mime = require('mime');
 const multer = require('multer');
 const fs = require('fs');
@@ -14,10 +15,12 @@ const generateUniqueId = require('./public/js/idGenerator');
 const auth = require('./public/js/auth');
 const { Client } = require('@microsoft/microsoft-graph-client');
 const { ClientSecretCredential } = require('@azure/identity');
+const { Server } = require('socket.io');
 
 const app = express();
-const port = 3000;
-const hostname = 'localhost';
+const port = process.env.PORT || 3000;
+const server = http.createServer(app);
+const io = new Server(server);
 
 app.use(express.static(path.join(__dirname, 'dist')));
 
@@ -59,7 +62,7 @@ app.use(session({
     secret: process.env.SESSION_SECRET || 'default_secret_key',  // Provide a default secret
     resave: false,
     saveUninitialized: true,
-    cookie: { secure: false }  // Set to true if using HTTPS
+    cookie: { secure: process.env.NODE_ENV === 'production' }// Set to true if using HTTPS
 }));
 
 // Middleware to check if the user is an admin
@@ -125,8 +128,8 @@ app.get('/ticket', auth.ensureAuthenticated, (req, res) => {
 });
 
 // Route to serve the FAQ page
-app.get('/FAQ', auth.ensureAuthenticated, (req, res) => {
-    res.sendFile(path.join(__dirname, 'public/pages/FAQ.html'));
+app.get('/IT-FAQ', auth.ensureAuthenticated, (req, res) => {
+    res.sendFile(path.join(__dirname, 'public/pages/IT-FAQ.html'));
 });
 
 // Check if the authenticated user is an admin
@@ -135,27 +138,32 @@ app.get('/api/is-admin', auth.ensureAuthenticated, (req, res) => {
     res.json({ isAdmin });
 });
 
-// API endpoint to get all queries
 app.get('/api/queries', (req, res) => {
     const filePath = path.join(__dirname, 'queries.json');
-    let data = [];
     try {
-        data = require(filePath);
+        // Read file contents each time to avoid caching
+        const data = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
         // Sort queries by timestamp from most recent to least recent
         data.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+        res.json(data);
     } catch (err) {
         console.error('Error loading data file:', err);
+        res.status(500).json({ success: false, message: 'Failed to load queries.' });
     }
-    res.json(data);
 });
+
 
 // Route to serve the admin page (protected)
 app.get('/admin', auth.ensureAuthenticated, ensureAdmin, (req, res) => {
     res.sendFile(path.join(__dirname, 'public/pages/admin.html'));
 });
 
+app.get('/test', auth.ensureAuthenticated, ensureAdmin, (req, res) => {
+    res.sendFile(path.join(__dirname, 'public/pages/test.html'));
+});
+
 // Route to serve the contact cards page
-app.get('/contact-book', (req, res) => {
+app.get('/contact-book', auth.ensureAuthenticated, (req, res) => {
     res.sendFile(path.join(__dirname, 'public/pages/contact-book.html'));
 });
 
@@ -204,36 +212,6 @@ app.post('/api/update-ticket/:id', auth.ensureAuthenticated, (req, res) => {
         res.status(404).json({ success: false, message: 'Ticket not found' });
     }
 });
-
-
-
-
-// API route to withdraw a ticket
-app.delete('/api/withdraw-ticket/:id', auth.ensureAuthenticated, (req, res) => {
-    const { id } = req.params;
-    const userEmail = req.session.account.username;  // Get the user's email from the session
-
-    const filePath = path.join(__dirname, 'queries.json');
-    let data = [];
-
-    try {
-        data = require(filePath);
-        const ticketIndex = data.findIndex(ticket => ticket.id === id && ticket.user === userEmail);
-
-        if (ticketIndex !== -1) {
-            data[ticketIndex].status = 'Withdrawn';  // Mark the ticket as withdrawn
-            fs.writeFileSync(filePath, JSON.stringify(data, null, 2));  // Save changes to file
-            res.json({ success: true, message: 'Ticket withdrawn successfully.' });
-        } else {
-            res.status(404).json({ success: false, message: 'Ticket not found or not authorized.' });
-        }
-    } catch (err) {
-        console.error('Error withdrawing ticket:', err);
-        res.status(500).json({ success: false, message: 'Failed to withdraw ticket.' });
-    }
-});
-
-
 
 // API endpoint to handle form submission (protected)
 app.post('/api/submit-form', auth.ensureAuthenticated, checkSubmissionRateLimit, upload.array('screenshots', 10), async (req, res) => {
@@ -320,7 +298,7 @@ console.log('Received files:', req.files);
             })).concat([{
                 "@odata.type": "#microsoft.graph.fileAttachment",
                 name: "kfg-logo-lg.jpg",
-                contentBytes: fs.readFileSync(path.join(__dirname, 'public/img/kfg-logo-lg.jpg')).toString('base64'),
+                contentBytes: fs.readFileSync(path.join(__dirname, 'public/img/H.W.-Kaufman.jpg')).toString('base64'),
                 contentType: 'image/jpeg',
                 contentId: "chesterfieldLogo"
             }]),
@@ -341,6 +319,33 @@ console.log('Received files:', req.files);
     } catch (err) {
         console.error('Error handling form submission:', err);
         res.status(400).json({ success: false, message: err.message || 'Failed to process form submission.' });
+    }
+});
+
+app.post('/api/update-queries', (req, res) => {
+    const updates = req.body.updates;
+    const filePath = path.join(__dirname, 'queries.json');
+
+    try {
+        let queries = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+
+        updates.forEach(update => {
+            const queryIndex = queries.findIndex(query => query.id === update.id);
+            if (queryIndex !== -1) {
+                queries[queryIndex] = update;
+            }
+        });
+
+        fs.writeFileSync(filePath, JSON.stringify(queries, null, 2));
+
+        // Emit update to all clients through WebSocket
+        io.emit('queriesUpdated', queries);
+        console.log('Emitting queriesUpdated event');  // Log for debugging
+
+        res.json({ success: true, message: 'All changes saved successfully.' });
+    } catch (err) {
+        console.error('Error saving updates:', err);
+        res.status(500).json({ success: false, message: 'Failed to save changes.' });
     }
 });
 
@@ -371,24 +376,41 @@ app.post('/api/update-query/:id', auth.ensureAuthenticated, (req, res) => {
     }
 });
 
-app.delete('/api/withdraw-ticket/:id', (req, res) => {
+app.delete('/api/withdraw-ticket/:id', auth.ensureAuthenticated, (req, res) => {
     const { id } = req.params;
+    const userEmail = req.session.account.username;  // Get the user's email from the session
 
-    // Load the queries.json file
     const filePath = path.join(__dirname, 'queries.json');
-    let queries = require(filePath);
 
-    // Filter out the ticket that needs to be deleted
-    const newQueries = queries.filter(query => query.id !== id);
+    console.log('Received request to delete ticket:', id, 'for user:', userEmail); // Log request info
 
-    // Save the updated queries to the file
-    fs.writeFileSync(filePath, JSON.stringify(newQueries, null, 2));
+    try {
+        // Load existing tickets without caching
+        const data = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
 
-    res.json({ success: true, message: 'Ticket successfully withdrawn and deleted' });
+        // Filter out the ticket with the matching id and user email
+        const updatedData = data.filter(ticket => !(ticket.id === id && ticket.user === userEmail));
+
+        if (updatedData.length !== data.length) {
+            console.log('Ticket found and deleted. Saving updated data...');
+            // Write the updated data back to the file
+            fs.writeFileSync(filePath, JSON.stringify(updatedData, null, 2));
+            io.emit('ticketWithdrawn', id);  // Notify clients in real-time
+            console.log(`Emitting ticketWithdrawn for ticket ID: ${id}`);
+            res.json({ success: true, message: 'Ticket successfully withdrawn and deleted.' });
+        } else {
+            console.log('Ticket not found or not authorized');
+            res.status(404).json({ success: false, message: 'Ticket not found or not authorized.' });
+        }
+    } catch (err) {
+        console.error('Error withdrawing ticket:', err);
+        res.status(500).json({ success: false, message: 'Failed to withdraw ticket.' });
+    }
 });
 
 
+
 // Start the server
-app.listen(port, hostname, () => {
-    console.log(`Server running at http://${hostname}:${port}/`);
+server.listen(port, () => {
+    console.log(`Server running on port ${port}`);
 });
